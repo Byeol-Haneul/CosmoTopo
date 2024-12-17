@@ -13,7 +13,7 @@ import torch.multiprocessing as mp
 from data.load_data import load_tensors, split_data
 from model.network import Network
 from model.train import train, evaluate, save_checkpoint, load_checkpoint
-from data.dataset import CustomDataset, custom_collate_fn
+from data.dataset import CustomDataset
 
 from config.param_config import PARAM_STATS, PARAM_ORDER, normalize_params, denormalize_params
 from config.machine import *

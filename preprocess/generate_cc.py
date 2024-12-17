@@ -460,7 +460,7 @@ def create_cc(in_dir, in_filename):
     cc.set_cell_attributes(tetra_data, name="tetra_feat")
     cc.set_cell_attributes(cluster_data, name="cluster_feat")
     cc.set_cell_attributes(hypercluster_data, name="hypercluster_feat")
-    return cc, nodes, edges, tetrahedra, clusters, Hyperclusters
+    return cc, nodes, edges, tetrahedra, clusters, hyperclusters
 
 def remove_subset_clusters(clusters):
     to_remove = set()
