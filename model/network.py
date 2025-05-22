@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+
 from .layers import *
 
 def get_activation(update_func):
@@ -13,27 +14,31 @@ def get_activation(update_func):
         raise NotImplementedError
 
 class Network(nn.Module):
-    def __init__(self, layerType, channels_per_layer, final_output_layer, cci_mode: str, update_func: str, aggr_func: str, residual_flag: bool = True):
+    def __init__(self, layerType, channels_per_layer, final_output_layer, cci_mode: str, update_func: str, aggr_func: str, residual_flag: bool = True, loss_fn_name: str = "log_implicit_likelihood"):
         super().__init__()
         
         self.layerType = layerType
         self.cci_mode = cci_mode
         self.activation = get_activation(update_func)
         self.base_model = CustomHMC(layerType, channels_per_layer, update_func=self.activation, aggr_func=aggr_func, residual_flag=residual_flag)   
+        self.loss_fn_name = loss_fn_name
 
         penultimate_layer = channels_per_layer[-1][-1][0]
         num_aggregators = 4
 
-        if layerType == "Master" or self.layerType == "TNN":
+        if self.layerType == "TNN":
             num_ranks_pooling = 5
         else:
             num_ranks_pooling = 1
         
         # Global feature size: x_0.shape[0], x_1.shape[0], x_2.shape[0], x_3.shape[0]
-        global_feature_size = 4 
+        if self.layerType == "GNN":
+            self.global_feature_size = 4
+        else:
+            self.global_feature_size = 4 
 
         # Fully-Connected Layers
-        self.fc1 = nn.Linear(penultimate_layer * num_ranks_pooling * num_aggregators + global_feature_size, 512)           
+        self.fc1 = nn.Linear(penultimate_layer * num_ranks_pooling * num_aggregators + self.global_feature_size, 512)           
         self.fc2 = nn.Linear(512, 128)
         self.fc3 = nn.Linear(128, 64)
         self.fc4 = nn.Linear(64, final_output_layer)
@@ -70,7 +75,7 @@ class Network(nn.Module):
         cci0_to_0, cci0_to_1, cci0_to_2, cci0_to_3, cci0_to_4, cci1_to_1, cci1_to_2, cci1_to_3, cci1_to_4, cci2_to_2, cci2_to_3, cci2_to_4, cci3_to_3, cci3_to_4, cci4_to_4 = values
 
         # Global Feature
-        global_feature = batch['global_feature']
+        global_feature = batch['global_feature'][:, :self.global_feature_size]
        
         # Forward pass through the base model
         x_0, x_1, x_2, x_3, x_4 = self.base_model(
@@ -105,7 +110,7 @@ class Network(nn.Module):
         x_3 = global_aggregations(x_3)
         x_4 = global_aggregations(x_4)
        
-        if self.layerType == "GNN" or self.layerType == "TetraTNN":
+        if "GNN" in self.layerType or self.layerType == "TetraTNN":
             x = torch.cat((x_0, global_feature), dim=1)
         elif self.layerType == "ClusterTNN":
             x = torch.cat((x_3, global_feature), dim=1)
@@ -122,7 +127,14 @@ class Network(nn.Module):
         x = self.activation(x)
 
         x = self.fc4(x)
-        return x
+
+        if self.loss_fn_name == "mse":
+            return x
+        else:
+            x1 = x[:, :x.shape[1] // 2]
+            x2 = torch.square(x[:, x.shape[1] // 2:])
+            x = torch.cat([x1, x2], dim=1)
+            return x
 
 
 class CustomHMC(torch.nn.Module):
@@ -148,6 +160,8 @@ class CustomHMC(torch.nn.Module):
 
         if layerType == "GNN":
             self.base_layer = GNNLayer
+        elif layerType == "SimpleGNN":
+            self.base_layer = SimpleGNNLayer
         elif layerType == "TetraTNN":
             self.base_layer = TetraTNNLayer
         elif layerType == "ClusterTNN":

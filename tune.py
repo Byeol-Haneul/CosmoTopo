@@ -9,10 +9,10 @@ def tune(layerType):
         checkpoint_dir = RESULT_DIR + f"/integrated_{TYPE}/"
         n_trials = 300
     else:
-        checkpoint_dir = RESULT_DIR + f"/isolated_{TYPE}_{layerType}/"
+        checkpoint_dir = RESULT_DIR + f"/BENCHMARK_isolated_{TYPE}_{layerType}/"
         n_trials = 100
 
-    only_positions = True
+    only_positions = False
     device_num = "0,1,2,3"  # Not necessary
 
     run_optuna_study(data_dir_base, checkpoint_dir, LABEL_FILENAME, device_num, n_trials, only_positions, layerType=layerType)
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--layerType", 
         type=str, 
-        choices=["GNN", "TetraTNN", "ClusterTNN", "TNN", "All"], 
+        choices=["GNN", "TetraTNN", "ClusterTNN", "TNN", "All", "SimpleGNN"], 
         required=True,
         help="Specify the model architecture for tuning. Choices are 'GNN', 'TetraTNN', 'ClusterTNN', 'TNN', or 'All'."
     )

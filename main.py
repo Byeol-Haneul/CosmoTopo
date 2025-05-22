@@ -1,19 +1,22 @@
 import logging
-import torch
 import os, sys
 import random
 import pandas as pd
 import numpy as np
 import socket 
+import datetime
 
+import torch
 from torch.utils.data import DataLoader
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from data.load_data import load_tensors, split_data
-from model.network import Network
-from model.train import train, evaluate, save_checkpoint, load_checkpoint
 from data.dataset import CustomDataset
+
+from model.network import Network
+from train import train, evaluate, save_checkpoint, load_checkpoint
+from utils.loss_functions import *
 
 from config.param_config import PARAM_STATS, PARAM_ORDER, normalize_params, denormalize_params
 from config.machine import *
@@ -56,7 +59,7 @@ def gpu_setup(args, local_rank, world_size):
     os.environ['CUDA_VISIBLE_DEVICES'] = ",".join(str(i) for i in range(torch.cuda.device_count()))
     args.device = torch.device(f"cuda:{local_rank}")   
     torch.cuda.set_device(args.device)
-    dist.init_process_group(backend="nccl", init_method='env://') 
+    dist.init_process_group(backend="nccl", init_method='env://', timeout=datetime.timedelta(days=2)) 
     print(f"[GPU SETUP] Process {local_rank} set up on device {args.device}", file = sys.stderr)
 
 def fix_random_seed(seed):
@@ -66,95 +69,122 @@ def fix_random_seed(seed):
     random.seed(seed)
     logging.info(f"Random seed fixed to {seed}.")
 
-def implicit_likelihood_loss(output, target):
-    num_params = len(target)
-    y_out, err_out = output[:,:num_params], output[:,num_params:]
-    loss_mse = torch.mean(torch.sum((y_out - target)**2., axis=1), axis=0)
-    loss_ili = torch.mean(torch.sum(((y_out - target)**2. - err_out**2.)**2., axis=1), axis=0)
-    loss = loss_mse + loss_ili
-    return loss
-
 def load_and_prepare_data(num_list, args, global_rank, world_size):
-    # Determine the total number of samples
-    total_samples = len(num_list)
+    total_samples = CATALOG_SIZE
 
-    # Calculate the number of samples for validation and test
-    num_val_samples = int(args.val_size * total_samples)
-    num_test_samples = int(args.test_size * total_samples)
+    # Handle Bench_Quijote_Coarse_Small case with fixed indices
+    if BENCHMARK:
+        splits = np.load(BASE_DIR + "splits.npz")
+        train_indices = splits["train"]
+        val_indices = splits["val"]
+        test_indices = splits["test"]
+        assert len(train_indices) + len(val_indices) + len(test_indices) == total_samples
 
-    # Calculate the number of training samples
-    num_train_samples = total_samples - num_val_samples - num_test_samples
+    elif TYPE == "Bench_Quijote_Coarse_Small":
+        if total_samples != 3072:
+            raise ValueError(f"Expected 3072 samples, but got {total_samples}")
+        train_indices = list(range(2048))  # First 2048 for training
+        val_indices = list(range(2048, 2560))  # Next 512 for validation
+        test_indices = list(range(2560, 3072))  # Last 512 for test
+    elif TYPE == "fR":
+        if total_samples != 2048:
+            raise ValueError(f"Expected 2048 samples, but got {total_samples}")
+        train_indices = list(range(1536))  # First 2048 for training
+        val_indices = list(range(1536, 1792))  # Next 512 for validation
+        test_indices = list(range(1792, 2048))  # Last 512 for test
+    elif TYPE == "Bench_Quijote_Coarse_Large":
+        if total_samples != 32768:
+            raise ValueError(f"Expected 32768 samples, but got {total_samples}")
+    
+        train_indices = list(range(24576))  
+        val_indices = list(range(24576, 28672)) 
+        test_indices = list(range(28672, 32768)) 
+    else:
+        # Default dynamic case
+        num_val_samples = int(args.val_size * total_samples)
+        num_test_samples = int(args.test_size * total_samples)
+        num_train_samples = total_samples - num_val_samples - num_test_samples
+        
+        train_indices = list(range(num_train_samples))
+        val_indices = list(range(num_train_samples, num_train_samples + num_val_samples))
+        test_indices = list(range(num_train_samples + num_val_samples, total_samples))
 
-    # Split indices for validation and test
-    val_indices = list(range(num_train_samples, num_train_samples + num_val_samples))
-    test_indices = list(range(num_train_samples + num_val_samples, total_samples))
+    if TYPE == "CAMELS_50":
+        # Skip simulation 425, which is not finished as of now. 
+        try:
+            train_indices.remove(425)
+            test_indices.remove(425)
+            val_indices.remove(425)
+        except:
+            pass
 
-    # Prepare data for each rank
-    per_process_train_size = num_train_samples // world_size
-    start_train_idx = global_rank * per_process_train_size
-    end_train_idx = (global_rank + 1) * per_process_train_size
+    def split_indices(indices, rank, world_size):
+        base_size = len(indices) // world_size
+        remainder = len(indices) % world_size
+        if rank < remainder:
+            start_idx = rank * (base_size + 1)
+            end_idx = start_idx + base_size + 1
+        else:
+            start_idx = remainder * (base_size + 1) + (rank - remainder) * base_size
+            end_idx = start_idx + base_size
 
-    # Prepare training indices
-    train_indices = list(range(start_train_idx, end_train_idx))
+        return indices[start_idx:end_idx]
 
+
+    common_size = len(train_indices) // world_size
+
+    if global_rank == 0:
+        logging.info(f"Saving data split indices to {args.checkpoint_dir}")
+        split_path = os.path.join(args.checkpoint_dir, "split_indices.txt")
+        with open(split_path, "w") as f:
+            f.write(f"Train Indices ({len(train_indices)}):\n{train_indices}\n\n")
+            f.write(f"Validation Indices ({len(val_indices)}):\n{val_indices}\n\n")
+            f.write(f"Test Indices ({len(test_indices)}):\n{test_indices}\n\n")
+        logging.info(f"Data split indices saved to {split_path}")
+
+    # Split data equally across processes
+    train_indices_rank = split_indices(train_indices, global_rank, world_size)
+    val_indices_rank = split_indices(val_indices, global_rank, world_size)
+    test_indices_rank = test_indices if global_rank == 0 else []
+
+    # Load training tensors
     data_dir, label_filename, target_labels, feature_sets = (
         args.data_dir, args.label_filename, args.target_labels, args.feature_sets
     )
 
-    # Load tensors only for the designated train indices
-    logging.info(f"Loading training tensors for {len(train_indices)} samples from {data_dir}")
+    logging.info(f"Rank {global_rank}: Loading training tensors for {len(train_indices_rank)} samples.")
     train_tensor_dict = load_tensors(
-        [num_list[i] for i in train_indices], data_dir, label_filename, args, target_labels, feature_sets
+        train_indices_rank, data_dir, label_filename, args, target_labels, feature_sets
     )
-
-    logging.info("Normalizing target parameters for training")
     train_tensor_dict['y'] = normalize_params(train_tensor_dict['y'], target_labels)
-
-    # Prepare training data for all ranks
     train_data = {feature: train_tensor_dict[feature] for feature in feature_sets + ['y']}
     train_tuples = list(zip(*[train_data[feature] for feature in feature_sets + ['y']]))
-
-    logging.info(f"Created train dataset with {len(train_tuples)} samples")
     train_dataset = CustomDataset(train_tuples, feature_sets + ['y'])
 
-    # Divide validation set across ranks
-    per_process_val_size = num_val_samples // world_size
-    start_val_idx = global_rank * per_process_val_size
-    end_val_idx = (global_rank + 1) * per_process_val_size
-    val_indices_rank = val_indices[start_val_idx:end_val_idx]
-
-    # Load tensors for the validation subset of each rank
-    logging.info(f"Loading validation tensors for {len(val_indices_rank)} samples from {data_dir}")
+    # Load validation tensors
+    logging.info(f"Rank {global_rank}: Loading validation tensors for {len(val_indices_rank)} samples.")
     val_tensor_dict = load_tensors(
-        [num_list[i] for i in val_indices_rank], data_dir, label_filename, args, target_labels, feature_sets
+        val_indices_rank, data_dir, label_filename, args, target_labels, feature_sets
     )
     val_tensor_dict['y'] = normalize_params(val_tensor_dict['y'], target_labels)
-
     val_data = {feature: val_tensor_dict[feature] for feature in feature_sets + ['y']}
     val_tuples = list(zip(*[val_data[feature] for feature in feature_sets + ['y']]))
-
-    logging.info(f"Created validation dataset with {len(val_tuples)} samples")
     val_dataset = CustomDataset(val_tuples, feature_sets + ['y'])
 
-    # Only rank 0 loads and handles the test set
+    # Load test tensors (only for rank 0)
     if global_rank == 0:
-        logging.info(f"Loading test tensors for {len(test_indices)} samples from {data_dir}")
+        logging.info(f"Rank {global_rank}: Loading test tensors for {len(test_indices_rank)} samples.")
         test_tensor_dict = load_tensors(
-            [num_list[i] for i in test_indices], data_dir, label_filename, args, target_labels, feature_sets
+            test_indices_rank, data_dir, label_filename, args, target_labels, feature_sets
         )
         test_tensor_dict['y'] = normalize_params(test_tensor_dict['y'], target_labels)
-
         test_data = {feature: test_tensor_dict[feature] for feature in feature_sets + ['y']}
         test_tuples = list(zip(*[test_data[feature] for feature in feature_sets + ['y']]))
-
-        logging.info(f"Created test dataset with {len(test_tuples)} samples")
         test_dataset = CustomDataset(test_tuples, feature_sets + ['y'])
     else:
         test_dataset = None
 
-    return train_dataset, val_dataset, test_dataset
-
-
+    return train_dataset, val_dataset, test_dataset, common_size
 
 def initialize_model(args, local_rank):
     inout_channels = [args.hidden_dim] * len(args.in_channels)
@@ -167,12 +197,13 @@ def initialize_model(args, local_rank):
     logging.info("Initializing model")
     
     # Define final output layer
-    final_output_layer = len(args.target_labels) * 2
+    if args.loss_fn_name == "mse":
+        final_output_layer = len(args.target_labels)
+    else:
+        final_output_layer = len(args.target_labels) * 2
 
     # Initialize the model
-    model = Network(args.layerType, channels_per_layer, final_output_layer, args.cci_mode, args.update_func, args.aggr_func, args.residual_flag)
-
-    # Move the model to the correct device before wrapping in DDP
+    model = Network(args.layerType, channels_per_layer, final_output_layer, args.cci_mode, args.update_func, args.aggr_func, args.residual_flag, args.loss_fn_name)
     model.to(args.device)
 
     # Only wrap in DDP if there are multiple GPUs
@@ -204,11 +235,11 @@ def main(passed_args=None, dataset=None):
     
     if not args.tuning:
         gpu_setup(args, local_rank, world_size)
-
-    num_list = [i for i in range(CATALOG_SIZE)]
+        
+    num_list = None if BENCHMARK else [i for i in range(CATALOG_SIZE)]
 
     if dataset is None:
-        train_dataset, val_dataset, test_dataset = load_and_prepare_data(num_list, args, global_rank, world_size)
+        train_dataset, val_dataset, test_dataset, common_size = load_and_prepare_data(num_list, args, global_rank, world_size)
 
     ### NEIGHBORHOOD DROPPING ###
     logging.info(f"Processing Augmentation with Drop Probability {args.drop_prob}")
@@ -219,10 +250,10 @@ def main(passed_args=None, dataset=None):
             dataset.augment(args.drop_prob, args.cci_mode)
 
     #################
-    model = initialize_model(args, local_rank) 
+    model = initialize_model(args, local_rank)
 
     # Define loss function and optimizer
-    loss_fn = implicit_likelihood_loss
+    loss_fn = get_loss_fn(args.loss_fn_name)
     opt = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.T_max, eta_min=0)
 
@@ -231,7 +262,7 @@ def main(passed_args=None, dataset=None):
 
     # Training
     logging.info("Starting training")
-    best_loss = train(model, train_dataset, val_dataset, test_dataset, loss_fn, opt, scheduler, args, checkpoint_path, global_rank)
+    best_loss = train(model, train_dataset, val_dataset, test_dataset, loss_fn, opt, scheduler, args, checkpoint_path, global_rank, common_size)
     
     # Evaluation - only from rank 0
     if global_rank == 0:

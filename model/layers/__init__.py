@@ -1,4 +1,4 @@
-from .GNNLayer import GNNLayer
+from .GNNLayer import GNNLayer, SimpleGNNLayer
 from .TetraTNNLayer import TetraTNNLayer
 from .ClusterTNNLayer import ClusterTNNLayer
 from .TNNLayer import TNNLayer

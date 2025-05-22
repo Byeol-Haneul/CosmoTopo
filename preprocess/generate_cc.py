@@ -19,8 +19,8 @@ from toponetx.readwrite.serialization import load_from_pickle
 
 from invariants import Invariants, cell_invariants_torch, cross_cell_invariants
 from neighbors import get_neighbors
-from config_preprocess import *
 from config.machine import *
+from config_preprocess import *
 
 # ---- FEATURES ---- #
 # NODES:        4 (Mstar, Rstar, Metal, Vmax). Node Features are NOT USED in the study.
@@ -29,49 +29,6 @@ from config.machine import *
 # CLUSTERS:     7 (num_galaxies, e1, e2, e3, gyradius, angle1, angle2)
 # HYPERCLUSTER: 3 (distance, angle1, angle2)
 # ------------------ #
-
-def load_catalog(directory, filename):
-    '''
-    Modified from CosmoGraphNet
-    arXiv:2204.13713
-    https://github.com/PabloVD/CosmoGraphNet/
-    '''
-    if TYPE == "Quijote":
-        pos = np.loadtxt(directory + filename)/BOXSIZE
-    else:
-        f = h5py.File(directory + filename, 'r')
-        pos   = f['/Subhalo/SubhaloPos'][:]/BOXSIZE
-        Mstar = f['/Subhalo/SubhaloMassType'][:,4] * MASS_UNIT
-        Rstar = f["Subhalo/SubhaloHalfmassRadType"][:,4]
-        Nstar = f['/Subhalo/SubhaloLenType'][:,4] 
-        Metal = f["Subhalo/SubhaloStarMetallicity"][:]
-        Vmax = f["Subhalo/SubhaloVmax"][:]
-        f.close()
-    
-    # Some simulations are slightly outside the box, correct it
-    pos[np.where(pos<0.0)]+=1.0
-    pos[np.where(pos>1.0)]-=1.0
-
-    if TYPE == "Quijote":
-        feat = np.zeros(pos.shape)
-    else:
-        indexes = np.where(Nstar>Nstar_th)[0]
-        #indexes = np.where(Mstar>MASS_CUT)[0]
-        pos     = pos[indexes]
-        Mstar   = Mstar[indexes]
-        Rstar   = Rstar[indexes]
-        Metal   = Metal[indexes]
-        Vmax    = Vmax[indexes]
-
-        #Normalization
-        Mstar = np.log10(1.+ Mstar)
-        Rstar = np.log10(1.+ Rstar)
-        Metal = np.log10(1.+ Metal)
-        Vmax  = np.log10(1.+ Vmax)
-
-        feat = np.vstack((Mstar, Rstar, Metal, Vmax)).T
-
-    return pos, feat
 
 class AbstractCells:
     def __init__(self, nodes, pos):
@@ -149,6 +106,7 @@ class Edge(AbstractCells):
         unitrow = row / np.linalg.norm(row)
         unitcol = col / np.linalg.norm(col)
         unitdiff = diff / np.linalg.norm(diff)
+        unitdiff[np.isnan(unitdiff)] = 0
 
         # Dot products between unit vectors
         cos1 = np.dot(unitrow.T, unitcol)
@@ -287,7 +245,10 @@ class Hypercluster(AbstractCells):
         self.num_nodes_cluster1 = np.log10(len(cluster1.nodes) + 1)
         self.num_nodes_cluster2 = np.log10(len(cluster2.nodes) + 1)
 
-        self.angles = self.calculate_angles()
+        if cluster1 == cluster2:
+            self.angles = [0,0]
+        else:
+            self.angles = self.calculate_angles()
         self.features = [self.distance] + self.angles
 
     def calculate_angles(self):
@@ -369,12 +330,12 @@ def get_kdtree_edges(pos, r_link=0.015):
     return kdtree_edge_set
 
 
-def create_cc(in_dir, in_filename):    
+def create_cc(num):    
     ##########################
     global NUMPOINTS, NUMEDGES, NUMTETRA
     
     # Read in data
-    pos, feat = load_catalog(in_dir, in_filename)
+    pos, feat = load_catalog(num)
     pos[np.where(pos<0.0)]+=1.0
     pos[np.where(pos>1.0)]-=1.0
 
@@ -399,17 +360,24 @@ def create_cc(in_dir, in_filename):
 
     # 4. Get Hyperclusters using MST
     hyperclusters = {}
-    mst = create_mst(clusters)
-    for edge in mst.edges(data=True):
-        cluster1_label = edge[0]
-        cluster2_label = edge[1]
-        dist = edge[2]['weight']
+    # if we have a single cluster, we produce a self-loop. 
+    if len(clusters) > 1:
+        mst = create_mst(clusters)
+        for edge in mst.edges(data=True):
+            cluster1_label = edge[0]
+            cluster2_label = edge[1]
+            dist = edge[2]['weight']
 
-        cluster1 = clusters[cluster1_label]
-        cluster2 = clusters[cluster2_label]
+            cluster1 = clusters[cluster1_label]
+            cluster2 = clusters[cluster2_label]
 
-        hypercluster_label = f"hyper_{cluster1_label}_{cluster2_label}"
-        hypercluster = Hypercluster(cluster1, cluster2, dist, pos)
+            hypercluster_label = f"hyper_{cluster1_label}_{cluster2_label}"
+            hypercluster = Hypercluster(cluster1, cluster2, dist, pos)
+            hyperclusters[hypercluster_label] = hypercluster
+    else:
+        cluster1 = cluster2 = clusters[list(clusters.keys())[-1]]
+        hypercluster_label = f"hyper_0_0"
+        hypercluster = Hypercluster(cluster1, cluster2, 0, pos)
         hyperclusters[hypercluster_label] = hypercluster
 
     
@@ -474,8 +442,8 @@ def remove_subset_clusters(clusters):
             A = clusters[cluster_labels[i]].nodes
             B = clusters[cluster_labels[j]].nodes
 
-            if A & B == A or A & B == B:
-                if len(A) <= len(B):
+            if (A & B == A or A & B == B):
+                if len(A) < len(B):
                     to_remove.add(cluster_labels[i])
                 else:
                     to_remove.add(cluster_labels[j])
@@ -525,6 +493,10 @@ def main(array):
     jobs_per_process = total_elements // size
     extra_jobs = total_elements % size
 
+    if BENCHMARK and rank == 0:
+        print(f"[LOG] GET SPLITS FOR TRAIN/VAL/TEST", file=sys.stderr)
+        get_splits()
+
     if rank < extra_jobs:
         start_idx = rank * (jobs_per_process + 1)
         end_idx = start_idx + jobs_per_process + 1
@@ -535,17 +507,11 @@ def main(array):
     slice_array = array[start_idx:end_idx]
     
     for num in slice_array:
-        if TYPE == "Quijote":
-            in_filename = f"catalog_{num}.txt"
-            out_filename = f"data_{num}.pickle"
-        else:
-            in_filename = f"data_{num}.hdf5"
-            out_filename = f"data_{num}.pickle"
+        cc, nodes, edges, tetrahedra, clusters, hyperclusters = create_cc(num)
 
-        cc, nodes, edges, tetrahedra, clusters, hyperclusters = create_cc(in_dir, in_filename)
-
-        print(f"[LOG] Process {rank}: Created combinatorial complex for file {in_filename}", file=sys.stderr)
-        to_pickle(cc, cc_dir + out_filename)
+        print(f"[LOG] Process {rank}: Created combinatorial complex for # {num}", file=sys.stderr)
+        
+        to_pickle(cc, cc_dir + f"data_{num}.pickle")
 
         print(f"[LOG] Process {rank}: Calculating Neighbors", file=sys.stderr)
         neighbors = get_neighbors(num, cc)

@@ -1,6 +1,7 @@
 import torch
 from torch.utils.data import Dataset
 from utils.augmentation import augment_data
+import h5py
 
 class CustomDataset(Dataset):
     def __init__(self, data, feature_names):

@@ -85,16 +85,19 @@ def cross_cell_invariants(num, nodes, edges, tetrahedra, clusters, hyperclusters
     for i, list1 in enumerate(cell_lists):
         for j, list2 in enumerate(cell_lists):
             if i <= j:
-                print(f"[LOG] Calculating for cell ranks {i} and {j}", file=sys.stderr)
-                
-                euclidean_distances, hausdorff_distances = cell_invariants_torch(list1, list2, neighbors[f"n{i}_to_{j}"])
+                if (not FLAG_HIGHER_ORDER) and (j>1):
+                    invariants[f'euclidean_{rank_names[i]}_to_{rank_names[j]}'] = None
+                    invariants[f'hausdorff_{rank_names[i]}_to_{rank_names[j]}'] = None
+                else:
+                    print(f"[LOG] Calculating for cell ranks {i} and {j}", file=sys.stderr)
+                    
+                    euclidean_distances, hausdorff_distances = cell_invariants_torch(list1, list2, neighbors[f"n{i}_to_{j}"])
 
-                invariants[f'euclidean_{rank_names[i]}_to_{rank_names[j]}'] = normalize(euclidean_distances, "ISDISTANCE")
-                invariants[f'hausdorff_{rank_names[i]}_to_{rank_names[j]}'] = normalize(hausdorff_distances, "ISDISTANCE")
+                    invariants[f'euclidean_{rank_names[i]}_to_{rank_names[j]}'] = normalize(euclidean_distances, "ISDISTANCE")
+                    invariants[f'hausdorff_{rank_names[i]}_to_{rank_names[j]}'] = normalize(hausdorff_distances, "ISDISTANCE")
 
 
-    for key, tensor in invariants.items():
-        print(f"[LOG] Saving tensor {key}.pt", file=sys.stderr)
-        torch.save(tensor, os.path.join(tensor_dir, f"{key}_{num}.pt"))
+    print(f"[LOG] Saving tensor invariant_{num}.pt", file=sys.stderr)
+    torch.save(invariants, os.path.join(tensor_dir, f"invariant_{num}.pt"))
 
     return invariants

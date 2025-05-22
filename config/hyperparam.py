@@ -32,10 +32,14 @@ class HyperparameterTuner:
         self.dataset   = None 
 
     def create_base_args(self):
-        if TYPE == "Quijote":
+        if BENCHMARK:
             target_labels = ["Omega_m", "sigma_8"]
-        elif TYPE == "CAMELS":
+        elif TYPE == "fR":
+            target_labels = ["Omega_M", "m_nu", "f_R0"]
+        elif TYPE == "CAMELS" or TYPE == "CAMELS_SB28":
             target_labels = ["Omega0"]
+        elif TYPE == "CAMELS_50":
+            target_labels = ["Omega0", "sigma8"]
 
         return Namespace(
             # Mode
@@ -43,7 +47,7 @@ class HyperparameterTuner:
             only_positions=self.only_positions,
 
             # Model Architecture
-            in_channels=[1, 3, 5, 7, 3],
+            in_channels=[3, 3, 5, 7, 3] if BENCHMARK else [4, 3, 5, 7, 3],
             attention_flag=False,
             residual_flag=True,
 
@@ -57,6 +61,7 @@ class HyperparameterTuner:
             # Training Hyperparameters
             num_epochs=300,
             test_interval=100,
+            loss_fn_name="mse" if BENCHMARK else 'implicit_likelihood',
 
             # Device
             device_num=self.device_num,
@@ -72,23 +77,30 @@ class HyperparameterTuner:
         self.gpu_setup()
         trial = optuna_integration.TorchDistributedTrial(single_trial)
 
-        if TYPE == "Quijote":
+        if TYPE == "fR":
             data_dir =  self.data_dir_base + trial.suggest_categorical('data_mode', ['tensors_3000', 'tensors_4000', 'tensors_5000'])
-        elif TYPE == "CAMELS":
+        elif TYPE == "CAMELS_50":
+            data_dir =  self.data_dir_base + trial.suggest_categorical('data_mode', ['tensors_8000', 'tensors_10000'])
+            #elif TYPE == "Bench_Quijote_Coarse_Small" or TYPE == "Quijote" or TYPE == "CAMELS" or TYPE == "CAMELS_SB28":
+        else:
             data_dir = self.data_dir_base + trial.suggest_categorical('data_mode', ['tensors', 'tensors_sparse', 'tensors_dense'])
 
         hidden_dim = trial.suggest_categorical('hidden_dim', [32, 64, 128, 256])
         num_layers = trial.suggest_int('num_layers', 1, 6)
-        cci_mode = trial.suggest_categorical('cci_mode', ['euclidean', 'hausdorff'])
+        cci_mode = trial.suggest_categorical('cci_mode', ['euclidean', 'hausdorff', 'None'])
         learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-3, log=True)
-        weight_decay = trial.suggest_float('weight_decay', 1e-5, 1e-3, log=True)
+        weight_decay = trial.suggest_float('weight_decay', 1e-7, 1e-5, log=True)
 
         if self.layerType == "All":
             layer_type = trial.suggest_categorical('layerType', ['TetraTNN', 'ClusterTNN', 'TNN', 'GNN'])
         else:
             layer_type = self.layerType
 
-        batch_size = trial.suggest_categorical('batch_size', [1,2,4,8])
+        if "CAMELS" in TYPE:
+            batch_size = trial.suggest_categorical('batch_size', [1,2,4,8])
+        else:
+            batch_size = trial.suggest_categorical('batch_size', [1,2,4,8,16])
+
         drop_prob = trial.suggest_float('drop_prob', 0, 0.2, log=False)
         T_max = trial.suggest_int('T_max', 10, 100)
         update_func = trial.suggest_categorical('update_func', ['tanh', 'relu'])
@@ -146,7 +158,7 @@ class HyperparameterTuner:
         return args
 
     def load_data(self):
-        num_list = [i for i in range(CATALOG_SIZE)]
+        num_list = None if BENCHMARK else [i for i in range(CATALOG_SIZE)]
         return load_and_prepare_data(num_list, self.base_args, self.global_rank, self.world_size)
 
     def train_and_evaluate(self, args):
