@@ -98,7 +98,6 @@ def train(model, train_set, val_set, test_set, loss_fn, opt, scheduler, args, ch
         else:
             avg_train_loss = None  # Not needed for non-zero ranks
         
-        # Validate the model only for rank 0
         val_loss = validate(model, val_set, loss_fn, device, epoch_i)
         if global_rank == 0:
             logging.info(f"Epoch: {epoch_i}, Validation Loss: {val_loss:.6f}")
