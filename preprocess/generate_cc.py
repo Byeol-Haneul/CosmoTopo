@@ -1,3 +1,28 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+This module processes cosmological simulation data to construct combinatorial complexes, 
+and capture multi-scale geometric & topological structures using the TopoNetX framework. 
+
+# ---- FEATURES ---- #
+# NODES:        4 (Mstar, Rstar, Metal, Vmax). Node Features are NOT USED in the study.
+# EDGES:        3 (distance, angle1, angle2)
+# TETRA:        5 (volume, 4 areas)
+# CLUSTERS:     7 (num_galaxies, e1, e2, e3, gyradius, angle1, angle2)
+# HYPEREDGES: 3 (distance, angle1, angle2)
+# ------------------ #
+
+Notes:
+- Only kdtree_edges are used. Addition of tetra_edges show degraded performance. 
+- # of cells are governed by the configurations in preprocess/config_preprocess.py
+
+References
+----------
+.. [TopoModelX] https://github.com/pyt-team/TopoModelX/blob/main/topomodelx/nn/combinatorial/
+.. [CosmoGraphNet] https://github.com/PabloVD/CosmoGraphNet
+'''
+
 from mpi4py import MPI
 import numpy as np
 import h5py
@@ -21,14 +46,6 @@ from invariants import Invariants, cell_invariants_torch, cross_cell_invariants
 from neighbors import get_neighbors
 from config_preprocess import *
 from config.machine import *
-
-# ---- FEATURES ---- #
-# NODES:        4 (Mstar, Rstar, Metal, Vmax). Node Features are NOT USED in the study.
-# EDGES:        3 (distance, angle1, angle2)
-# TETRA:        5 (volume, 4 areas)
-# CLUSTERS:     7 (num_galaxies, e1, e2, e3, gyradius, angle1, angle2)
-# HYPERCLUSTER: 3 (distance, angle1, angle2)
-# ------------------ #
 
 def load_catalog(directory, filename):
     '''
@@ -271,8 +288,7 @@ class Cluster(AbstractCells):
     def __repr__(self):
         return f"Cluster(label={self.label}, features={self.features})"
 
-
-class Hypercluster(AbstractCells):  
+class Hyperedge(AbstractCells):  
     def __init__(self, cluster1, cluster2, dist, pos):
         # Combine nodes and positions from both clusters
         nodes = cluster1.nodes | cluster2.nodes
@@ -306,7 +322,7 @@ class Hypercluster(AbstractCells):
         return angles
 
     def __repr__(self):
-        return f"Hypercluster(cluster1={self.cluster1_label}, cluster2={self.cluster2_label}, features={self.features})"
+        return f"Hyperedge(cluster1={self.cluster1_label}, cluster2={self.cluster2_label}, features={self.features})"
 
 
 def create_mst(clusters):
@@ -397,8 +413,8 @@ def create_cc(in_dir, in_filename):
     # 3. Clustering on Tetrahedra
     clusters = clustering(tetrahedra, pos)
 
-    # 4. Get Hyperclusters using MST
-    hyperclusters = {}
+    # 4. Get Hyperedges using MST
+    hyperedges = {}
     mst = create_mst(clusters)
     for edge in mst.edges(data=True):
         cluster1_label = edge[0]
@@ -408,9 +424,9 @@ def create_cc(in_dir, in_filename):
         cluster1 = clusters[cluster1_label]
         cluster2 = clusters[cluster2_label]
 
-        hypercluster_label = f"hyper_{cluster1_label}_{cluster2_label}"
-        hypercluster = Hypercluster(cluster1, cluster2, dist, pos)
-        hyperclusters[hypercluster_label] = hypercluster
+        hyperedge_label = f"hyper_{cluster1_label}_{cluster2_label}"
+        hyperedge = Hyperedge(cluster1, cluster2, dist, pos)
+        hyperedges[hyperedge_label] = hyperedge
 
     
     NUMPOINTS = pos.shape[0] if (NUMPOINTS == -1 or NUMPOINTS>pos.shape[0]) else NUMPOINTS
@@ -448,19 +464,19 @@ def create_cc(in_dir, in_filename):
     cluster_data = {tuple(cluster.nodes): cluster.features for cluster in clusters.values()}
 
     # 5-5 ADD HyperCluster ##
-    hyperclusters = remove_subset_clusters(hyperclusters)
-    for hypercluster in hyperclusters.values():
-        cc.add_cell(list(hypercluster.nodes), rank=4)
+    hyperedges = remove_subset_clusters(hyperedges)
+    for hyperedge in hyperedges.values():
+        cc.add_cell(list(hyperedge.nodes), rank=4)
 
-    hypercluster_data = {tuple(hypercluster.nodes): hypercluster.features for hypercluster in hyperclusters.values()}
+    hyperedge_data = {tuple(hyperedge.nodes): hyperedge.features for hyperedge in hyperedges.values()}
 
     # ADD CELL ATTRIBUTES
     cc.set_cell_attributes(node_data, name="node_feat")
     cc.set_cell_attributes(edge_data, name="edge_feat")
     cc.set_cell_attributes(tetra_data, name="tetra_feat")
     cc.set_cell_attributes(cluster_data, name="cluster_feat")
-    cc.set_cell_attributes(hypercluster_data, name="hypercluster_feat")
-    return cc, nodes, edges, tetrahedra, clusters, hyperclusters
+    cc.set_cell_attributes(hyperedge_data, name="hyperedge_feat")
+    return cc, nodes, edges, tetrahedra, clusters, hyperedges
 
 def remove_subset_clusters(clusters):
     to_remove = set()
@@ -542,7 +558,7 @@ def main(array):
             in_filename = f"data_{num}.hdf5"
             out_filename = f"data_{num}.pickle"
 
-        cc, nodes, edges, tetrahedra, clusters, hyperclusters = create_cc(in_dir, in_filename)
+        cc, nodes, edges, tetrahedra, clusters, hyperedges = create_cc(in_dir, in_filename)
 
         print(f"[LOG] Process {rank}: Created combinatorial complex for file {in_filename}", file=sys.stderr)
         to_pickle(cc, cc_dir + out_filename)
@@ -551,7 +567,7 @@ def main(array):
         neighbors = get_neighbors(num, cc)
 
         print(f"[LOG] Process {rank}: Calculating Cross-Cell-Invariants", file=sys.stderr)
-        invariants = cross_cell_invariants(num, nodes, edges, tetrahedra, clusters, hyperclusters, neighbors)
+        invariants = cross_cell_invariants(num, nodes, edges, tetrahedra, clusters, hyperedges, neighbors)
 
     comm.Barrier()
     MPI.Finalize()

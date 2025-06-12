@@ -1,5 +1,6 @@
 '''
-Note:
+Author: Jun-Young Lee
+
 This is a hand-tunable hyperparameter configuration file for testing with a single run, without Optuna. 
 Once using Optuna via ~/tune.py, the hyperparameters will be sampled from config/hyperparam.py
 '''

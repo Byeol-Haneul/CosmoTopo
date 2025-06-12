@@ -1,7 +1,13 @@
-# Configuration settings:
-# - MACHINE: Specifies the computational environment. Options: "RUSTY", "HAPPINESS".
-# - TYPE: Defines the type of simulation dataset.     Options: "Quijote", "CAMELS".
-# - SUBGRID: Allows extensibility for different subgrid models in the future. Current option: "IllustrisTNG".
+'''
+Author: Jun-Young Lee
+
+This file serves as a master configuration for both preprocessing/training/testing phases.
+
+Configuration settings:
+    - MACHINE: Specifies the computational environment. Options: "RUSTY", "HAPPINESS".
+    - TYPE: Defines the type of simulation dataset.     Options: "Quijote", "CAMELS".
+    - SUBGRID: Allows extensibility for different subgrid models in the future. Current option: "IllustrisTNG".
+'''
 
 MACHINE = "RUSTY"
 TYPE    = "CAMELS"

@@ -1,3 +1,21 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+This module handles loading and preprocessing of simulation tensor data, to be fed to the neural networks.
+
+Main Functions:
+- load_tensors: 
+    Loads features and target parameters for a list of simulation IDs..
+
+- split_data: 
+    Splits a list of sample indices into train/val/test splits using deterministic, non-shuffled partitioning, 
+    for a fair comparison across different models. Sanity check on the uniformity of sampled parameters complete. 
+
+- sparsify: 
+    Converts sparse COO tensors into SparseTensor for efficient calculation.
+'''
+
 import os
 import torch
 import torch.distributed as dist

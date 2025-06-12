@@ -1,3 +1,10 @@
+'''
+Author: Jun-Young Lee
+
+CustomDataset for loading combinatorial complexes. 
+Supports augmentation using the neighborhood dropping technique in utils.augmentation.
+'''
+
 import torch
 from torch.utils.data import Dataset
 from utils.augmentation import augment_data

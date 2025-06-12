@@ -1,7 +1,12 @@
 #!/bin/bash
 '''
-FOR TRANSFERRING FILES                    
-NOTE: WE ARE ONLY USING z=0 (snapshot 90) 
+Author: Jun-Young Lee
+
+Summary:
+Easy simulation file transfer using globus.
+
+Notes:
+- WE ARE ONLY USING z=0 (snapshot 90) 
 '''
 source_ep="SOURCE ENDPOINT"
 dest_ep="DESTINATION ENDPOINT"

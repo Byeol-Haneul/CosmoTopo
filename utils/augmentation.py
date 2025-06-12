@@ -1,3 +1,14 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+Random cell/neighborhood-dropping for data augmentation.
+
+Notes:
+- drop_prob is given as a hyperparameter.
+- cell/neighborhood-dropping available for all ranks.
+'''
+
 import torch
 from torch_sparse import SparseTensor
 

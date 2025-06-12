@@ -1,3 +1,10 @@
+'''    
+Author: Jun-Young Lee
+
+Model: TetraTNN
+- Message passing between nodes, edges, and tetrahedra.
+'''
+
 import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter

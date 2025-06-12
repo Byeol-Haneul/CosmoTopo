@@ -1,16 +1,27 @@
+'''
+Author: Jun-Young Lee
+
+Summary: Aggregation classes.
+
+Notes:
+- PNAAggregator: Intra-neighborhood Aggregation 
+    (i.e., aggregating messages from all cells y1, y2, ... for yi \in N(x))
+- RankAggregator: Inter-neighborhood Aggregation 
+    (i.e., aggregating messages from all neighborhoods N1(x), N2(x), N3(x), ...)
+
+References
+----------
+.. Gabriele Corso, Luca Cavalleri, Dominique Beaini, Pietro Liò, Petar Veličković
+    Principal Neighbourhood Aggregation for Graph Nets (2020) https://arxiv.org/abs/2004.05718
+   - We use a subset of aggregators proposed from Corso, Gabriele, et al. 2020.
+'''
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Literal
 from torch_sparse.matmul import *
 
-'''
-Notes:
-- PNAAggregator: Intra-neighborhood Aggregation 
-- RankAggregator: Inter-neighborhood Aggregation
-
-We use a subset of aggregators proposed from Corso, Gabriele, et al. 2020.
-'''
 class PNAAggregator(nn.Module):
     def __init__(self, in_channels, out_channels, aggr_func='sum', scalers=['identity'], update_func=F.relu):
         super(PNAAggregator, self).__init__()

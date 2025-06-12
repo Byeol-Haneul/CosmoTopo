@@ -1,3 +1,11 @@
+'''    
+Author: Jun-Young Lee
+
+Model: GNN
+- Message passing between nodes and edges.
+- Message passing between edge-edge pairs are also enabled.
+'''
+
 import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter

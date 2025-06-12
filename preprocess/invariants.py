@@ -1,3 +1,20 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+This module creates E(3)-invariant features associated with heterogeneous cells.
+
+Notes:
+- We refer to these invariant features as cross-cell invariants (cci) throughout the code.
+- We support euclidean/hausdorff distances.
+- Invariants are calculated only for neighboring cells.
+
+References
+----------
+.. Claudio Battiloro, Ege Karaismailoğlu, Mauricio Tec, George Dasoulas, Michelle Audirac, Francesca Dominici (2024)
+   E(n) Equivariant Topological Neural Networks
+'''
+
 import torch
 import sys
 import cProfile
@@ -76,8 +93,8 @@ def profile_if_enabled(func):
 
 cell_invariants_torch = profile_if_enabled(cell_invariants_torch)
 
-def cross_cell_invariants(num, nodes, edges, tetrahedra, clusters, hyperclusters, neighbors):
-    cell_lists = [nodes, edges, tetrahedra, list(clusters.values()), list(hyperclusters.values())]
+def cross_cell_invariants(num, nodes, edges, tetrahedra, clusters, hyperedges, neighbors):
+    cell_lists = [nodes, edges, tetrahedra, list(clusters.values()), list(hyperedges.values())]
     rank_names = ['0', '1', '2', '3', '4']
 
     invariants = {}

@@ -1,3 +1,20 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+Runs hyperparameter tuning using Optuna for a specified model architecture.
+It supports both isolated architecture tuning (GNN, TNNs) and integrated multi-layer tuning.
+
+! Important
+- Remember to set config/machine.py to configure simulations and paths.
+- Remember to set config/hyperparam.py to configure the hyperparameter space.
+- Set only_positions True, unless you want to use other features. 
+
+Notes:
+- Use 'All' for integrated runs.
+- Use run.slurm to submit tasks for multi-node, multi-gpu inference.
+'''
+
 import os
 import argparse
 from config.hyperparam import HyperparameterTuner, run_optuna_study

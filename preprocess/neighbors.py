@@ -1,3 +1,20 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+Generates neighborhoods from pickled combinatorial complexes, and save to torch-friendly data structure for training.
+
+Notes:
+- Node, edge, tetrahedral, cluster, and hyperedge features / neighborhoods.
+- Intra-rank adjacency matrices (with self-loops).
+- Inter-rank incidence matrices.
+- Global graph-level summary features (log-scaled size of each rank).
+
+References
+----------
+.. [TopoModelX] https://github.com/pyt-team/TopoModelX/blob/main/topomodelx/nn/combinatorial/
+'''
+
 from mpi4py import MPI
 import torch
 import numpy as np
@@ -47,7 +64,7 @@ def get_neighbors(num, cc):
     results['x_3'] = x_3
 
     print(f"[LOG] Processing cluster features for num {num}", file=sys.stderr)
-    x_4 = list(cc.get_cell_attributes("hypercluster_feat").values())
+    x_4 = list(cc.get_cell_attributes("hyperedge_feat").values())
     in_channels[4] = len(x_4[0])
     x_4 = torch.tensor(np.stack(x_4)).reshape(-1, in_channels[4])
     results['x_4'] = x_4

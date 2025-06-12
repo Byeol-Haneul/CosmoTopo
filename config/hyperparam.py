@@ -1,3 +1,20 @@
+'''
+Author: Jun-Young Lee
+
+This script provides an automated, distributed hyperparameter tuning pipeline using 
+Optuna and PyTorch Distributed. It is designed for multi-node, multi-GPU training and supports
+different simulation datasets and model configurations. 
+
+Main Features:
+- Distributed training across GPUs using PyTorch's NCCL backend.
+- Hyperparameter optimization with Optuna/Optuna-integration, including custom trial suggestions.
+- Result logging, visualization, and best parameter export.
+- Heartbeat thread for monitoring long runs.
+
+Class: HyperparameterTuner
+Entrypoint: run_optuna_study()
+'''
+
 import optuna
 import optuna_integration
 import torch

@@ -1,3 +1,22 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+Main function governing the total train-evaluation phase in multi-node, multi-gpu environment. 
+
+! Important
+- When using fixed hyperparameters, run this as main
+- When optimizing hyperparameters,  run this via tune.py
+
+Notes:
+- Logger configuration
+- GPU setup and seed fixing
+- Tensor data loading and normalization
+- Dataset splitting per rank (train/val/test)
+- Model construction and DDP wrapping
+- Training, evaluation, and checkpointing
+'''
+
 import logging
 import torch
 import os, sys
@@ -153,8 +172,6 @@ def load_and_prepare_data(num_list, args, global_rank, world_size):
         test_dataset = None
 
     return train_dataset, val_dataset, test_dataset
-
-
 
 def initialize_model(args, local_rank):
     inout_channels = [args.hidden_dim] * len(args.in_channels)

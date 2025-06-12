@@ -1,3 +1,10 @@
+'''    
+Author: Jun-Young Lee
+
+Model: TNN
+- Message passing between nodes, edges, tetrahedra, cluster, and hyperedges.
+'''
+
 import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter

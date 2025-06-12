@@ -1,3 +1,18 @@
+'''
+Author: Jun-Young Lee
+
+This module provides parameter normalization utilities for cosmological simulation datasets. 
+This module is relevant for the training/testing phase.
+
+Constants:
+- PARAM_STATS: Dict mapping parameter names to min/max ranges.
+- PARAM_ORDER: Defines the order in which parameters appear in data arrays.
+
+Functions:
+- normalize_params: Normalize physical parameters to [0, 1] based on dataset-specific min/max values.
+- denormalize_params: Denormalize predictions from normalized space back to original physical parameter units.
+'''
+
 import numpy as np
 import torch
 from config.machine import BASE_DIR, TYPE

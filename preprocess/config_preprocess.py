@@ -1,13 +1,28 @@
+'''
+Author: Jun-Young Lee
+
+Summary: Configuration for preprocessing modules.
+
+! Caution
+- Before running preprocessing scripts, please be aware that the master settings (MACHINE, TYPE, SUBGRID) are appropriately set.
+- Check config/Machine.py
+
+Note:
+- Constants:
+    - BOXSIZE, DIM
+    - Galaxy Selection Criteria for CAMELS (following arXiv:2204.13713, https://github.com/PabloVD/CosmoGraphNet/)
+- Hyperparameters:
+    - r_link (edge connection criteria)
+    - MINCLUSTER: minimum # of tetrahedra to form a cluster
+    - NUM(POINTS, EDGES, TETRA): -1 if unlimited
+- Normalization
+    - according to distance/area/volume by r_link
+'''
 import os
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.machine import *
-
-'''
-Note:
-Before running preprocessing scripts, please be aware that the master settings (MACHINE, TYPE, SUBGRID) are appropriately set.
-'''
 
 # ---- CONSTANTS ---- #
 if TYPE == "Quijote":
@@ -30,7 +45,8 @@ modes = {"ISDISTANCE": 1, "ISAREA": 2, "ISVOLUME": 3}
 global_centroid = None # to be updated.
 
 # --- HYPERPARAMS --- #
-#dense: 0.02, sparse: 0.01, fiducial: 0.015
+# dense: 0.02, sparse: 0.01, fiducial: 0.015
+# For Quijote: change NUMTETRA \in {3000, 4000, 5000}
 r_link = 0.015 
 MINCLUSTER = 5 
 NUMPOINTS  = -1

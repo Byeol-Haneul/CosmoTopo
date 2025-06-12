@@ -1,3 +1,14 @@
+'''
+Author: Jun-Young Lee
+
+Summary: Train/Evaluation functions. 
+
+Note:
+- Gradient accumulation to bypass memory constraints.
+- Save or load training state (model, optimizer, epoch, loss).
+- Distributed training enabled.
+'''
+
 import torch
 import torch.distributed as dist
 

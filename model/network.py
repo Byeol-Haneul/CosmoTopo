@@ -1,3 +1,11 @@
+'''
+Author: Jun-Young Lee
+
+Summary:
+- Network: class defining the overall network structure, including TNNs and the final fully connected layers.
+- CustomHMC: model constructor that stacks custom layers and handles residual connections and activation.
+'''
+
 import torch
 from torch import nn
 from .layers import *

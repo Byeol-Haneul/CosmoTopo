@@ -1,18 +1,11 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn.parameter import Parameter
-from model.aggregators import *
-from torch_sparse.tensor import SparseTensor
-from torch_sparse.matmul import *
-
 '''    
-Notes
------
+Author: Jun-Young Lee
+
+Summary: BaseLayer for all the GNN/TNN layers
+
 - We modify the Higher-order Attention Network (HOAN) from [H23]. 
 - Attention mechanisms are removed, and intra-neighborhood aggregation methods are added.
 - Cell-Cell E(3)-Invariants (CCI) are added for use.
-- This module serve as a base layer for all the TNN layers.
 
 References
 ----------
@@ -27,6 +20,14 @@ References
 .. [TopoModelX] https://github.com/pyt-team/TopoModelX/blob/main/topomodelx/nn/combinatorial/
 
 '''
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.nn.parameter import Parameter
+from model.aggregators import *
+from torch_sparse.tensor import SparseTensor
+from torch_sparse.matmul import *
 
 def sparse_hadamard(A, B):
     return A*B
