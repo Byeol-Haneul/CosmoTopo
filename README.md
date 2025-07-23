@@ -1,4 +1,6 @@
-# TopoGal
+# CosmoTopo
+This code provides tools for constructing **combinatorial complexes** from galaxy or halo catalogs and includes a full training pipeline for **Topological Deep Learning (TDL)** models. If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](arxiv.org/abs/2505.23904).
+
 <p align="center">
   <img src="visualizations/structures.png" alt="Combinatorial Complex built on a Halo Catalog from the Quijote Suite" width="600"/>
 </p>
@@ -88,4 +90,28 @@ All computations are implemented using `SparseTensor` operations for efficiency 
 </p>
 
 ## Acknowledgements
-We acknowledge the use of [TopoModelX](https://github.com/pyt-team/TopoModelX) and [TopoNetX](https://github.com/pyt-team/TopoNetX) for our higher-order network models and creation of combinatorial complexes. We also acknowledge the use and modification of [CosmoGraphNet](https://github.com/PabloVD/CosmoGraphNet) for building graphs. 
+We acknowledge the use of [TopoModelX](https://github.com/pyt-team/TopoModelX) and [TopoNetX](https://github.com/pyt-team/TopoNetX) for our higher-order network models and creation of combinatorial complexes. We also acknowledge the use and modification of [CosmoGraphNet](https://github.com/PabloVD/CosmoGraphNet) for building graphs.
+
+## Updates
+- Jul 23. 2025: We have further optimized both preprocessing/training pipelines, supporting batching, selective memory loading.
+
+## Citations
+- If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](arxiv.org/abs/2505.23904)
+```
+@ARTICLE{2025arXiv250523904L,
+       author = {{Lee}, Jun-Young and {Villaescusa-Navarro}, Francisco},
+        title = "{Cosmology with Topological Deep Learning}",
+      journal = {arXiv e-prints},
+     keywords = {Cosmology and Nongalactic Astrophysics},
+         year = 2025,
+        month = may,
+          eid = {arXiv:2505.23904},
+        pages = {arXiv:2505.23904},
+          doi = {10.48550/arXiv.2505.23904},
+archivePrefix = {arXiv},
+       eprint = {2505.23904},
+ primaryClass = {astro-ph.CO},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2025arXiv250523904L},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+```
