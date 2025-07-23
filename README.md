@@ -1,5 +1,5 @@
 # CosmoTopo
-This code provides tools for constructing **combinatorial complexes** from galaxy or halo catalogs and includes a full training pipeline for **Topological Deep Learning (TDL)** models. If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](https://arxiv.org/abs/2505.23904).
+This code provides tools for constructing **combinatorial complexes** from galaxy or halo catalogs and includes a full training pipeline for **Topological Deep Learning (TDL)** models. We support multi-node, multi-GPU training using PyTorch's `DistributedDataParallel (DDP)` and `Optuna-Integration`. If you find this code useful, please cite the following paper: [*Cosmology with Topological Deep Learning*](https://arxiv.org/abs/2505.23904).
 
 <p align="center">
   <img src="visualizations/structures.png" alt="Combinatorial Complex built on a Halo Catalog from the Quijote Suite" width="600"/>
@@ -92,11 +92,17 @@ All computations are implemented using `SparseTensor` operations for efficiency 
 ## Acknowledgements
 We acknowledge the use of [TopoModelX](https://github.com/pyt-team/TopoModelX) and [TopoNetX](https://github.com/pyt-team/TopoNetX) for our higher-order network models and creation of combinatorial complexes. We also acknowledge the use and modification of [CosmoGraphNet](https://github.com/PabloVD/CosmoGraphNet) for building graphs.
 
-## Updates
+## Miscellaneous
+📌 **Version for paper**:  
+The version of this code used in [*Cosmology with Topological Deep Learning*](https://arxiv.org/abs/2505.23904) is archived at [Zenodo](https://zenodo.org/records/15651073) for reproducibility.
+
+🚧 **Ongoing development**:  
+This repository continues to evolve with new features and improvements.
 - Jul 23. 2025: We have further optimized both preprocessing/training pipelines, supporting batching, selective memory loading.
 
+
 ## Citations
-- If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](https://arxiv.org/abs/2505.23904)
+- If you find this code useful, please cite the following paper: [*Cosmology with Topological Deep Learning*](https://arxiv.org/abs/2505.23904)
 ```
 @ARTICLE{2025arXiv250523904L,
        author = {{Lee}, Jun-Young and {Villaescusa-Navarro}, Francisco},
