@@ -18,21 +18,23 @@ Note:
 - Normalization
     - according to distance/area/volume by r_link
 '''
+
 import os
 import sys
+import h5py 
+import numpy as np
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config.machine import *
 
 # ---- CONSTANTS ---- #
+DIM = 3
 if TYPE == "Quijote":
     BOXSIZE = 1e3 
 elif TYPE == "CAMELS":
     BOXSIZE = 25e3
 else:
     raise Exception("Invalid Simulation Suite")
-
-DIM = 3
 
 if TYPE == "CAMELS":
     MASS_UNIT = 1e10
@@ -45,15 +47,20 @@ modes = {"ISDISTANCE": 1, "ISAREA": 2, "ISVOLUME": 3}
 global_centroid = None # to be updated.
 
 # --- HYPERPARAMS --- #
-# dense: 0.02, sparse: 0.01, fiducial: 0.015
-# For Quijote: change NUMTETRA \in {3000, 4000, 5000}
-r_link = 0.015 
+#dense: 0.02, sparse: 0.01, fiducial: 0.015
+#r_link = 0.015 
+r_link = float(os.getenv("R_LINK", 0.015))
+NUMCUT = int(os.getenv("NUMCUT", -1))
+print(f"THE R_LINK IS SET AS {r_link}", file=sys.stderr)
+print(f"THE NUMCUT IS SET AS {NUMCUT}", file=sys.stderr)
+
 MINCLUSTER = 5 
 NUMPOINTS  = -1
 NUMEDGES   = -1
-NUMTETRA   = 3000 if (TYPE == "Quijote") else -1
+NUMTETRA   = NUMCUT if (TYPE == "Quijote") else -1
 
 ## OPTIONS ##
+FLAG_HIGHER_ORDER = True
 ENABLE_PROFILING = False
 #############
 
@@ -70,6 +77,52 @@ else:
 
 os.makedirs(cc_dir, exist_ok=True)
 os.makedirs(tensor_dir, exist_ok=True)
+
+def load_catalog(num):
+    '''
+    Modified from CosmoGraphNet
+    arXiv:2204.13713
+    https://github.com/PabloVD/CosmoGraphNet/
+    '''
+    if TYPE == "Quijote":
+        in_filename = f"catalog_{num}.txt"
+        pos = np.loadtxt(in_dir + in_filename)/BOXSIZE
+    else:
+        in_filename = f"data_{num}.hdf5"
+        f = h5py.File(in_dir + in_filename, 'r')
+        pos   = f['/Subhalo/SubhaloPos'][:]/BOXSIZE
+        vel_z = f['/Subhalo/SubhaloVel'][:, 2]
+        Mstar = f['/Subhalo/SubhaloMassType'][:,4] * MASS_UNIT
+        Rstar = f["Subhalo/SubhaloHalfmassRadType"][:,4]
+        Nstar = f['/Subhalo/SubhaloLenType'][:,4] 
+        Metal = f["Subhalo/SubhaloStarMetallicity"][:]
+        Vmax = f["Subhalo/SubhaloVmax"][:]
+        f.close()
+    
+    # Some simulations are slightly outside the box, correct it
+    pos[np.where(pos<0.0)]+=1.0
+    pos[np.where(pos>1.0)]-=1.0
+
+    if TYPE == "Quijote":
+        feat = np.zeros(pos.shape)
+    else:
+        indexes = np.where(Nstar>Nstar_th)[0]
+        #indexes = np.where(Mstar>MASS_CUT)[0]
+        pos     = pos[indexes]
+        Mstar   = Mstar[indexes]
+        Rstar   = Rstar[indexes]
+        Metal   = Metal[indexes]
+        Vmax    = Vmax[indexes]
+
+        #Normalization
+        Mstar = np.log10(1.+ Mstar)
+        Rstar = np.log10(1.+ Rstar)
+        Metal = np.log10(1.+ Metal)
+        Vmax  = np.log10(1.+ Vmax)
+
+        feat = np.vstack((Mstar, Rstar, Metal, Vmax)).T
+
+    return pos, feat
 
 def normalize(value, option):
     power = modes[option]

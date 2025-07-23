@@ -39,7 +39,7 @@ elif TYPE == "CAMELS":
 else:
     raise Exception("Invalid Simulation Suite")
 
-def normalize_params(y_list: list[torch.tensor], target_labels: list[str]) -> list[torch.tensor]:
+def normalize_params(y_list, target_labels):
     norm_y_list = []
     for y in y_list: #already sorted by target_labels's order
         norm_y = torch.zeros_like(y)
@@ -49,7 +49,7 @@ def normalize_params(y_list: list[torch.tensor], target_labels: list[str]) -> li
     return norm_y_list
 
 
-def denormalize_params(norm_y: np.ndarray, target_labels: list[str]) -> np.ndarray:
+def denormalize_params(norm_y, target_labels):
     num_params = len(target_labels)
     y = np.zeros((norm_y.shape[0], num_params * 2))
     

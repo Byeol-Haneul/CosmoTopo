@@ -30,7 +30,7 @@ from main import main, load_and_prepare_data
 from config.machine import *
 
 class HyperparameterTuner:
-    def __init__(self, data_dir_base, checkpoint_dir, label_filename, device_num, only_positions, global_rank, local_rank, world_size, layerType):
+    def __init__(self, data_dir_base, checkpoint_dir, label_filename, device_num, global_rank, local_rank, world_size, layerType, in_channel):
         ## Distributed
         self.global_rank = global_rank
         self.local_rank = local_rank
@@ -42,25 +42,26 @@ class HyperparameterTuner:
         self.checkpoint_dir = checkpoint_dir
         self.label_filename = label_filename
         self.device_num = device_num
-        self.only_positions = only_positions
-
+        
+        self.in_channel = in_channel
+        
         # Create a fixed base args for loading data
         self.base_args = self.create_base_args()
         self.dataset   = None 
 
     def create_base_args(self):
-        if TYPE == "Quijote":
-            target_labels = ["Omega_m", "sigma_8"]
-        elif TYPE == "CAMELS":
+        if TYPE == "CAMELS":
             target_labels = ["Omega0"]
+        else:
+            target_labels = ["Omega_m", "sigma_8"]
 
         return Namespace(
             # Mode
             tuning=True,
-            only_positions=self.only_positions,
+            only_positions=True,
 
             # Model Architecture
-            in_channels=[1, 3, 5, 7, 3],
+            in_channels=self.in_channel,
             attention_flag=False,
             residual_flag=True,
 
@@ -74,17 +75,18 @@ class HyperparameterTuner:
             # Training Hyperparameters
             num_epochs=300,
             test_interval=100,
+            loss_fn_name='implicit_likelihood',
 
             # Device
             device_num=self.device_num,
             device=None,
 
             # Fixed Values
-            val_size=0.1,
-            test_size=0.1,
+            val_size=0.15,
+            test_size=0.15,
             random_seed=12345,
         )
-
+    
     def objective(self, single_trial):
         self.gpu_setup()
         trial = optuna_integration.TorchDistributedTrial(single_trial)
@@ -123,7 +125,7 @@ class HyperparameterTuner:
         # Train and evaluate
         val_loss = self.train_and_evaluate(self.args)
         return val_loss
-
+    
     def create_args(self, data_dir, checkpoint_dir, hidden_dim, num_layers, cci_mode, 
                         learning_rate, weight_decay, layer_type, batch_size,
                         drop_prob, update_func, aggr_func, T_max = 30):
@@ -182,13 +184,13 @@ def run_heartbeat(interval):
         print(f"Heartbeat: System running at {time.strftime('%Y-%m-%d %H:%M:%S')}")
         time.sleep(interval)
 
-def run_optuna_study(data_dir, checkpoint_dir, label_filename, device_num, n_trials=50, only_positions=True, heartbeat_interval=1200, study_name="my_study", layerType="All"):
+def run_optuna_study(data_dir, checkpoint_dir, label_filename, device_num, in_channel, n_trials=50, heartbeat_interval=1200, study_name="my_study", layerType="All"):
     global_rank = int(os.environ['RANK'])    
     local_rank = int(os.environ['LOCAL_RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
 
     dist.init_process_group(backend="nccl", init_method='env://') 
-    tuner = HyperparameterTuner(data_dir, checkpoint_dir, label_filename, device_num, only_positions, global_rank, local_rank, world_size, layerType)
+    tuner = HyperparameterTuner(data_dir, checkpoint_dir, label_filename, device_num, global_rank, local_rank, world_size, layerType, in_channel)
     study = None
     
     if global_rank == 0:

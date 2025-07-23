@@ -8,10 +8,11 @@ Model: TNN
 import torch
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
-from .BaseLayer import sparse_row_norm, HBNS, HBS
+
 from topomodelx.base.aggregation import Aggregation
+
+from .BaseLayer import sparse_row_norm, HBNS, HBS
 from model.aggregators import *
-import sys
 
 class TNNLayer(torch.nn.Module):
     def __init__(

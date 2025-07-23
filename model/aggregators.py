@@ -29,7 +29,7 @@ class PNAAggregator(nn.Module):
         self.activation = update_func
 
         if aggr_func == 'all':
-            self.aggr_func = ['sum', 'max', 'min']
+            self.aggr_func = ['sum', 'max', 'min', 'mean']
             self.mlp = nn.Linear(len(self.aggr_func) * len(scalers) * in_channels, out_channels)
         else:
             self.aggr_func = [aggr_func]
@@ -61,6 +61,8 @@ class PNAAggregator(nn.Module):
             return self.max_aggregation()
         elif aggregation_type == 'min':
             return self.min_aggregation()
+        elif aggregation_type == 'mean':
+            return self.mean_aggregation()
         elif aggregation_type == 'std':
             return self.std_aggregation()
         else:
@@ -95,7 +97,7 @@ class RankAggregator(nn.Module):
         self.activation = update_func
 
         if aggr_func == 'all':
-            self.aggr_func = ['sum', 'max', 'min', 'std']
+            self.aggr_func = ['sum', 'max', 'min', 'std', 'mean']
             self.mlp = nn.Linear(len(self.aggr_func) * in_channels, out_channels)
         else:
             self.aggr_func = [aggr_func]
@@ -125,6 +127,8 @@ class RankAggregator(nn.Module):
             return self.min_aggregation(node_features_list)
         elif aggregation_type == 'std':
             return self.std_aggregation(node_features_list)
+        elif aggregation_type == 'mean':
+            return self.mean_aggregation(node_features_list)
         else:
             raise ValueError(f"Unsupported aggregation type: {aggregation_type}")
 
@@ -139,3 +143,6 @@ class RankAggregator(nn.Module):
 
     def std_aggregation(self, node_features_list):
         return torch.stack(node_features_list).std(dim=0)
+
+    def mean_aggregation(self, node_features_list):
+        return torch.stack(node_features_list).mean(dim=0)

@@ -40,7 +40,6 @@ def sparse_row_norm(sparse_tensor):
     )
     return sparse_tensor.coalesce()
 
-
 class HBNS(torch.nn.Module):
     def __init__(
         self,
@@ -108,14 +107,15 @@ class HBNS(torch.nn.Module):
     def forward(
         self, x_source: torch.Tensor, x_target: torch.Tensor, neighborhood: SparseTensor, cci = None
     ) -> tuple[torch.Tensor, torch.Tensor]:
+
         s_message, s_message2  = torch.mm(x_source, self.w_s), torch.mm(x_source, self.w_s_cci)  # [n_source_cells, d_t_out]
         t_message, t_message2  = torch.mm(x_target, self.w_t), torch.mm(x_target, self.w_t_cci)  # [n_target_cells, d_s_out]
 
         neighborhood_s_to_t = (
-            neighborhood.coalesce()
+            neighborhood#.coalesce()
         )  # [n_target_cells, n_source_cells]
         neighborhood_t_to_s = (
-            neighborhood.t().coalesce()
+            neighborhood.t()#.coalesce()
         )  # [n_source_cells, n_target_cells]
 
         # ADD CROSS-CELL INFORMATION
@@ -180,8 +180,8 @@ class HBS(torch.nn.Module):
             reset_p_hop_parameters(w, w2)
 
     def update(self, message: torch.Tensor) -> torch.Tensor:
-        message = self.activation(message)
         message = self.layer_norm(message)
+        message = self.activation(message)
         return message
 
     def forward(

@@ -50,6 +50,17 @@ If you're using a SLURM-based queue system, submit training jobs with:
 sbatch run.slurm
 ```
 
+Please run the following command (also available in `run.slurm`), replacing `<layerType>` with your preferred layer type:
+```
+torchrun \
+  --nproc_per_node=4 \
+  --nnodes=8 \
+  --rdzv_id="gnn" \
+  --rdzv_backend=c10d \
+  --rdzv_endpoint="${MASTER_IP}:12345" \
+  tune.py --layerType <layerType>
+```
+
 There are two main training options:
 
 #### 1. Manual Hyperparameter Choice

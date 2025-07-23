@@ -9,12 +9,16 @@ Notes:
 - cell/neighborhood-dropping available for all ranks.
 '''
 
-import torch
+import torch, sys
 from torch_sparse import SparseTensor
 
 def sparsify(tensor):
     if tensor.layout == torch.sparse_coo:
-        tensor = SparseTensor.from_torch_sparse_coo_tensor(tensor)
+        try:
+            tensor = SparseTensor.from_torch_sparse_coo_tensor(tensor)
+        except:
+            print(f"TENSOR: {tensor.shape}", tensor, file=sys.stderr)
+            raise Exception
     return tensor    
 
 def generate_mask(sparse_tensor, drop_prob=0.1):
@@ -28,6 +32,7 @@ def generate_mask(sparse_tensor, drop_prob=0.1):
     Returns:
     - mask (torch.sparse_coo_tensor): Sparse tensor mask indicating which values to keep.
     """
+    sparse_tensor = sparse_tensor.coalesce() 
     values = sparse_tensor.values()
     mask_values = torch.rand(values.shape, dtype=torch.float) > drop_prob
     mask_indices = sparse_tensor.indices()
@@ -36,9 +41,15 @@ def generate_mask(sparse_tensor, drop_prob=0.1):
 
 
 def augment_matrix(matrix, drop_prob, mask=None):
-    if mask is None:
-        mask = generate_mask(matrix, drop_prob)
-    return matrix.sparse_mask(mask)
+    if drop_prob > 0.0:
+        if mask is None:
+            mask = generate_mask(matrix, drop_prob)
+        try:
+            return matrix.sparse_mask(mask)
+        except:
+            return matrix
+    else:
+        return matrix
 
 def augment_data(data, drop_prob=0.1, cci_mode='euclidean'):
     """
@@ -63,6 +74,11 @@ def augment_data(data, drop_prob=0.1, cci_mode='euclidean'):
 
     for neigh_key in neighborhood_keys:
         if neigh_key in data:
+            if data[neigh_key] == None:
+                augmented_dict[neigh_key] = None
+                augmented_dict[key_mapping.get(neigh_key)] = None
+                continue
+                
             mask = generate_mask(data[neigh_key], drop_prob)
             augmented_dict[neigh_key] = sparsify(augment_matrix(data[neigh_key], drop_prob, mask))
 

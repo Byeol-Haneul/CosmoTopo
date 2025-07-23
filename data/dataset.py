@@ -8,6 +8,7 @@ Supports augmentation using the neighborhood dropping technique in utils.augment
 import torch
 from torch.utils.data import Dataset
 from utils.augmentation import augment_data
+import h5py
 
 class CustomDataset(Dataset):
     def __init__(self, data, feature_names):
@@ -21,7 +22,7 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def __getitem__(self, idx, augmented=False):
+    def __getitem__(self, idx):
         return self.augmented_dataset[idx]
 
     def augment(self, drop_prob=0.1, cci_mode='euclidean'):

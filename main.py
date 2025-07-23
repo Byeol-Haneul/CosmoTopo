@@ -18,23 +18,25 @@ Notes:
 '''
 
 import logging
-import torch
 import os, sys
 import random
 import pandas as pd
 import numpy as np
-import socket 
+import datetime
 
+import torch
 from torch.utils.data import DataLoader
 import torch.distributed as dist
-import torch.multiprocessing as mp
 
-from data.load_data import load_tensors, split_data
-from model.network import Network
-from model.train import train, evaluate, save_checkpoint, load_checkpoint
+from data.batch import collate_topological_batch
+from data.load_data import load_tensors, split_indices
 from data.dataset import CustomDataset
 
-from config.param_config import PARAM_STATS, PARAM_ORDER, normalize_params, denormalize_params
+from model.network import Network
+from train import train, evaluate
+from utils.loss_functions import *
+
+from config.param_config import PARAM_STATS, PARAM_ORDER, normalize_params
 from config.machine import *
 
 def setup_logger(log_filename):
@@ -60,22 +62,15 @@ def file_cleanup(args):
     log_filename = os.path.join(args.checkpoint_dir, f'training.log')
     setup_logger(log_filename)
 
-    
     for key, value in vars(args).items():
         logging.info(f"{key}: {value}")
     
 def gpu_setup(args, local_rank, world_size):
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    '''
-    if socket.gethostname() == "node14":
-        os.environ['CUDA_VISIBLE_DEVICES'] = "1,2"
-    else:
-        os.environ['CUDA_VISIBLE_DEVICES'] = ",".join(str(i) for i in range(torch.cuda.device_count()))
-    '''
     os.environ['CUDA_VISIBLE_DEVICES'] = ",".join(str(i) for i in range(torch.cuda.device_count()))
     args.device = torch.device(f"cuda:{local_rank}")   
     torch.cuda.set_device(args.device)
-    dist.init_process_group(backend="nccl", init_method='env://') 
+    dist.init_process_group(backend="nccl", init_method='env://', timeout=datetime.timedelta(days=2)) 
     print(f"[GPU SETUP] Process {local_rank} set up on device {args.device}", file = sys.stderr)
 
 def fix_random_seed(seed):
@@ -85,89 +80,67 @@ def fix_random_seed(seed):
     random.seed(seed)
     logging.info(f"Random seed fixed to {seed}.")
 
-def implicit_likelihood_loss(output, target):
-    num_params = len(target)
-    y_out, err_out = output[:,:num_params], output[:,num_params:]
-    loss_mse = torch.mean(torch.sum((y_out - target)**2., axis=1), axis=0)
-    loss_ili = torch.mean(torch.sum(((y_out - target)**2. - err_out**2.)**2., axis=1), axis=0)
-    loss = loss_mse + loss_ili
-    return loss
-
-def load_and_prepare_data(num_list, args, global_rank, world_size):
-    # Determine the total number of samples
-    total_samples = len(num_list)
-
-    # Calculate the number of samples for validation and test
+def load_and_prepare_data(args, global_rank, world_size):
+    total_samples = CATALOG_SIZE
     num_val_samples = int(args.val_size * total_samples)
     num_test_samples = int(args.test_size * total_samples)
-
-    # Calculate the number of training samples
     num_train_samples = total_samples - num_val_samples - num_test_samples
-
-    # Split indices for validation and test
+    
+    train_indices = list(range(num_train_samples))
     val_indices = list(range(num_train_samples, num_train_samples + num_val_samples))
     test_indices = list(range(num_train_samples + num_val_samples, total_samples))
 
-    # Prepare data for each rank
-    per_process_train_size = num_train_samples // world_size
-    start_train_idx = global_rank * per_process_train_size
-    end_train_idx = (global_rank + 1) * per_process_train_size
+    if global_rank == 0:
+        logging.info(f"Saving data split indices to {args.checkpoint_dir}")
+        split_path = os.path.join(args.checkpoint_dir, "split_indices.txt")
+        with open(split_path, "w") as f:
+            f.write(f"Train Indices ({len(train_indices)}):\n{train_indices}\n\n")
+            f.write(f"Validation Indices ({len(val_indices)}):\n{val_indices}\n\n")
+            f.write(f"Test Indices ({len(test_indices)}):\n{test_indices}\n\n")
+        logging.info(f"Data split indices saved to {split_path}")
 
-    # Prepare training indices
-    train_indices = list(range(start_train_idx, end_train_idx))
+    # Split data equally across processes
+    train_indices_rank = split_indices(train_indices, global_rank, world_size)
+    val_indices_rank = split_indices(val_indices, global_rank, world_size)
+    test_indices_rank = test_indices if global_rank == 0 else []
 
-    data_dir, label_filename, target_labels, feature_sets = (
-        args.data_dir, args.label_filename, args.target_labels, args.feature_sets
+    print(f"[RANK{global_rank}]: has {len(train_indices_rank)} files", file=sys.stdout)
+    sys.stdout.flush()
+
+    # Load training tensors
+    data_dir, label_filename, target_labels = (
+        args.data_dir, args.label_filename, args.target_labels
     )
 
-    # Load tensors only for the designated train indices
-    logging.info(f"Loading training tensors for {len(train_indices)} samples from {data_dir}")
+    logging.info(f"Rank {global_rank}: Loading training tensors for {len(train_indices_rank)} samples.")
     train_tensor_dict = load_tensors(
-        [num_list[i] for i in train_indices], data_dir, label_filename, args, target_labels, feature_sets
+        train_indices_rank, data_dir, label_filename, args, target_labels
     )
 
-    logging.info("Normalizing target parameters for training")
+    feature_sets = train_tensor_dict.keys()
     train_tensor_dict['y'] = normalize_params(train_tensor_dict['y'], target_labels)
+    train_data = {feature: train_tensor_dict[feature] for feature in feature_sets}
+    train_tuples = list(zip(*[train_data[feature] for feature in feature_sets]))
+    train_dataset = CustomDataset(train_tuples, feature_sets)
 
-    # Prepare training data for all ranks
-    train_data = {feature: train_tensor_dict[feature] for feature in feature_sets + ['y']}
-    train_tuples = list(zip(*[train_data[feature] for feature in feature_sets + ['y']]))
-
-    logging.info(f"Created train dataset with {len(train_tuples)} samples")
-    train_dataset = CustomDataset(train_tuples, feature_sets + ['y'])
-
-    # Divide validation set across ranks
-    per_process_val_size = num_val_samples // world_size
-    start_val_idx = global_rank * per_process_val_size
-    end_val_idx = (global_rank + 1) * per_process_val_size
-    val_indices_rank = val_indices[start_val_idx:end_val_idx]
-
-    # Load tensors for the validation subset of each rank
-    logging.info(f"Loading validation tensors for {len(val_indices_rank)} samples from {data_dir}")
+    # Load validation tensors
+    logging.info(f"Rank {global_rank}: Loading validation tensors for {len(val_indices_rank)} samples.")
     val_tensor_dict = load_tensors(
-        [num_list[i] for i in val_indices_rank], data_dir, label_filename, args, target_labels, feature_sets
+        val_indices_rank, data_dir, label_filename, args, target_labels
     )
     val_tensor_dict['y'] = normalize_params(val_tensor_dict['y'], target_labels)
+    val_data = {feature: val_tensor_dict[feature] for feature in feature_sets}
+    val_tuples = list(zip(*[val_data[feature] for feature in feature_sets]))
+    val_dataset = CustomDataset(val_tuples, feature_sets)
 
-    val_data = {feature: val_tensor_dict[feature] for feature in feature_sets + ['y']}
-    val_tuples = list(zip(*[val_data[feature] for feature in feature_sets + ['y']]))
-
-    logging.info(f"Created validation dataset with {len(val_tuples)} samples")
-    val_dataset = CustomDataset(val_tuples, feature_sets + ['y'])
-
-    # Only rank 0 loads and handles the test set
+    # Load test tensors (only for rank 0)
     if global_rank == 0:
-        logging.info(f"Loading test tensors for {len(test_indices)} samples from {data_dir}")
-        test_tensor_dict = load_tensors(
-            [num_list[i] for i in test_indices], data_dir, label_filename, args, target_labels, feature_sets
-        )
+        logging.info(f"Rank {global_rank}: Loading test tensors for {len(test_indices_rank)} samples.")
+        test_tensor_dict = load_tensors(test_indices_rank, data_dir, label_filename, args, target_labels)
         test_tensor_dict['y'] = normalize_params(test_tensor_dict['y'], target_labels)
-
-        test_data = {feature: test_tensor_dict[feature] for feature in feature_sets + ['y']}
-        test_tuples = list(zip(*[test_data[feature] for feature in feature_sets + ['y']]))
-
-        logging.info(f"Created test dataset with {len(test_tuples)} samples")
-        test_dataset = CustomDataset(test_tuples, feature_sets + ['y'])
+        test_data = {feature: test_tensor_dict[feature] for feature in feature_sets}
+        test_tuples = list(zip(*[test_data[feature] for feature in feature_sets]))
+        test_dataset = CustomDataset(test_tuples, feature_sets)
     else:
         test_dataset = None
 
@@ -184,12 +157,13 @@ def initialize_model(args, local_rank):
     logging.info("Initializing model")
     
     # Define final output layer
-    final_output_layer = len(args.target_labels) * 2
+    if args.loss_fn_name == "mse":
+        final_output_layer = len(args.target_labels)
+    else:
+        final_output_layer = len(args.target_labels) * 2
 
     # Initialize the model
-    model = Network(args.layerType, channels_per_layer, final_output_layer, args.cci_mode, args.update_func, args.aggr_func, args.residual_flag)
-
-    # Move the model to the correct device before wrapping in DDP
+    model = Network(args.layerType, channels_per_layer, final_output_layer, args.cci_mode, args.update_func, args.aggr_func, args.residual_flag, args.loss_fn_name)
     model.to(args.device)
 
     # Only wrap in DDP if there are multiple GPUs
@@ -202,18 +176,20 @@ def initialize_model(args, local_rank):
     return model
 
 
-def main(passed_args=None, dataset=None):
+def main(passed_args=None, dataset=None):    
+    ##########################################################
+    ##                      BASIC SETUP                     ##
+    ##########################################################
+
     if passed_args is None:
         from config.config import args  # Import only if not passed
     else:
         args = passed_args
-    
-    # Get local rank and world size from environment variables (usually set by the launcher)
+
     global_rank = int(os.environ['RANK'])
     local_rank = int(os.environ['LOCAL_RANK'])
     world_size = int(os.environ['WORLD_SIZE'])
 
-    ## BASIC SETUP ##
     if global_rank == 0:
         file_cleanup(args)
 
@@ -222,12 +198,13 @@ def main(passed_args=None, dataset=None):
     if not args.tuning:
         gpu_setup(args, local_rank, world_size)
 
-    num_list = [i for i in range(CATALOG_SIZE)]
 
+    #############################################################
+    ##                DATA LOADING AND AUGMENTATION            ##
+    #############################################################
     if dataset is None:
-        train_dataset, val_dataset, test_dataset = load_and_prepare_data(num_list, args, global_rank, world_size)
+        train_dataset, val_dataset, test_dataset = load_and_prepare_data(args, global_rank, world_size)
 
-    ### NEIGHBORHOOD DROPPING ###
     logging.info(f"Processing Augmentation with Drop Probability {args.drop_prob}")
     for dataset in [train_dataset, val_dataset, test_dataset]:
         if dataset is None:
@@ -235,32 +212,41 @@ def main(passed_args=None, dataset=None):
         else:
             dataset.augment(args.drop_prob, args.cci_mode)
 
-    #################
-    model = initialize_model(args, local_rank) 
+    
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=8, pin_memory=True, collate_fn=collate_topological_batch)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True, collate_fn=collate_topological_batch)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True, collate_fn=collate_topological_batch) if test_dataset is not None else None
 
-    # Define loss function and optimizer
-    loss_fn = implicit_likelihood_loss
+    ##########################################################
+    ##                 MODEL TRAINING & EVALUATION          ##
+    ##########################################################
+
+    model = initialize_model(args, local_rank)
+
+    loss_fn = get_loss_fn(args.loss_fn_name)
     opt = torch.optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.T_max, eta_min=0)
+    scheduler = torch.optim.lr_scheduler.CyclicLR(opt, base_lr=args.learning_rate, max_lr=1.e-3, cycle_momentum=False)
 
-    # Define checkpoint path
     checkpoint_path = os.path.join(args.checkpoint_dir, 'model_checkpoint.pth')
 
-    # Training
     logging.info("Starting training")
-    best_loss = train(model, train_dataset, val_dataset, test_dataset, loss_fn, opt, scheduler, args, checkpoint_path, global_rank)
-    
-    # Evaluation - only from rank 0
+    best_loss = train(model, train_loader, val_loader, test_loader, loss_fn, opt, scheduler, args, checkpoint_path, global_rank)
+
     if global_rank == 0:
         logging.info("Starting evaluation")
-        evaluate(model, test_dataset, args.device, os.path.join(os.path.dirname(checkpoint_path), "pred.txt"), args.target_labels)
-    
-    ## CLEAN UP ##
+        evaluate(model, test_loader, args.device, os.path.join(os.path.dirname(checkpoint_path), "pred.txt"), args.target_labels)
+
+    ##################################################
+    ##                 CLEANUP                      ##
+    ##################################################
+
     if not args.tuning:
         dist.destroy_process_group()
 
     torch.cuda.empty_cache()
+
     return best_loss
+
 
 if __name__ == "__main__":
     main()

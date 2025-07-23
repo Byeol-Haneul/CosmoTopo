@@ -291,4 +291,4 @@ dependencies:
     - websocket-client==1.8.0
     - widgetsnbextension==4.0.11
     - yarl==1.9.4
-prefix: /home/jylee/anaconda3/envs/topo
+prefix: /home/jylee/miniforge3/envs/topo

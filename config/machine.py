@@ -9,8 +9,10 @@ Configuration settings:
     - SUBGRID: Allows extensibility for different subgrid models in the future. Current option: "IllustrisTNG".
 '''
 
+import os 
+
 MACHINE = "RUSTY"
-TYPE    = "CAMELS"
+TYPE    = os.getenv("TYPE", "Quijote")
 SUBGRID = "IllustrisTNG"
 
 if MACHINE == "HAPPINESS":
@@ -36,5 +38,5 @@ else:
 
 if TYPE == "Quijote":
     CATALOG_SIZE = 2000 
-elif SUBGRID == "IllustrisTNG": 
+elif TYPE == "CAMELS": 
     CATALOG_SIZE = 1000
