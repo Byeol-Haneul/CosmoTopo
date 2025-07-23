@@ -1,5 +1,5 @@
 # CosmoTopo
-This code provides tools for constructing **combinatorial complexes** from galaxy or halo catalogs and includes a full training pipeline for **Topological Deep Learning (TDL)** models. If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](arxiv.org/abs/2505.23904).
+This code provides tools for constructing **combinatorial complexes** from galaxy or halo catalogs and includes a full training pipeline for **Topological Deep Learning (TDL)** models. If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](https://arxiv.org/abs/2505.23904).
 
 <p align="center">
   <img src="visualizations/structures.png" alt="Combinatorial Complex built on a Halo Catalog from the Quijote Suite" width="600"/>
@@ -96,7 +96,7 @@ We acknowledge the use of [TopoModelX](https://github.com/pyt-team/TopoModelX) a
 - Jul 23. 2025: We have further optimized both preprocessing/training pipelines, supporting batching, selective memory loading.
 
 ## Citations
-- If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](arxiv.org/abs/2505.23904)
+- If you find this code useful, please cite the following paper: [Cosmology with Topological Deep Learning](https://arxiv.org/abs/2505.23904)
 ```
 @ARTICLE{2025arXiv250523904L,
        author = {{Lee}, Jun-Young and {Villaescusa-Navarro}, Francisco},
